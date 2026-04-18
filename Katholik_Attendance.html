@@ -13,9 +13,7 @@
     padding: 28px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.12);
   }
   #loginPanel h3 { text-align: center; color: #2980b9; margin-top: 0; }
-  #loginPanel .school-name {
-    text-align: center; font-size: 13px; color: #888; margin-bottom: 16px;
-  }
+  #loginPanel .school-name { text-align: center; font-size: 13px; color: #888; margin-bottom: 16px; }
   #loginPanel input {
     width: 100%; padding: 10px; margin: 8px 0;
     border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
@@ -69,13 +67,11 @@
   tbody tr:hover { background: #eaf4ff; }
 
   .badge { padding: 3px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
-  .hadir  { background: #d4edda; color: #155724; }
-  .absent { background: #f8d7da; color: #721c24; }
-  .late   { background: #fff3cd; color: #856404; }
+  .hadir { background: #d4edda; color: #155724; }
+  .late  { background: #fff3cd; color: #856404; }
 
   .lock-icon { font-size: 48px; text-align: center; margin-bottom: 8px; }
 
-  /* Shake animation on wrong password */
   @keyframes shake {
     0%,100% { transform: translateX(0); }
     20%,60%  { transform: translateX(-8px); }
@@ -111,8 +107,7 @@
     <select id="statusFilter">
       <option value="">-- All Status --</option>
       <option value="hadir">Hadir</option>
-      <option value="absent">Absent</option>
-      <option value="late">Late</option>
+      <option value="late">Lewat</option>
     </select>
     <button onclick="loadAttendance()">🔍 Load</button>
   </div>
@@ -123,7 +118,16 @@
   <div class="scroll-wrap">
     <table>
       <thead>
-        <tr><th>#</th><th>ID</th><th>Name</th><th>Class</th><th>Status</th><th>Time</th></tr>
+        <tr>
+          <th>#</th>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Class</th>
+          <th>Status</th>
+          <th>Check In</th>
+          <th>Check Out</th>
+          <th>Late Count</th>
+        </tr>
       </thead>
       <tbody id="tableBody"></tbody>
     </table>
@@ -131,35 +135,24 @@
 </div>
 
 <script>
-// ╔══════════════════════════════════════════════════════════╗
-// ║  CREDENTIALS — edit these two values only               ║
-// ║                                                          ║
-// ║  USERNAME : admin║
-// ║  PASSWORD : 42381130ee52ed949aa505a7dd5bad8795e2880d897f941d349ee4f254111087║
-// ║  Get hash : https://emn178.github.io/online-tools/sha256.html║
-// ╚══════════════════════════════════════════════════════════╝
-
+// ── CREDENTIALS ──
 const VALID_USERNAME      = "admin";
 const VALID_PASSWORD_HASH = "42381130ee52ed949aa505a7dd5bad8795e2880d897f941d349ee4f254111087";
-// Above hash = "sekolah123" — REPLACE with your own hash!
 
-// ── Max login attempts before lockout ──
+// ── APPS SCRIPT PROXY URL ──
+const API_URL = "https://script.google.com/macros/s/AKfycbyrVVMiRyaYmaHZKFUMOYKh7IT7M5ZSuIm-QNm7dHwVRx6mJUXZaHuaQZ28XM1z6_4eyA/exec";
+
 const MAX_ATTEMPTS = 5;
 let attempts = 0;
-
-// ───────────────────────────────────────
-const API_URL = "https://script.google.com/macros/s/AKfycbyrVVMiRyaYmaHZKFUMOYKh7IT7M5ZSuIm-QNm7dHwVRx6mJUXZaHuaQZ28XM1z6_4eyA/exec";
-let allData = [];
+let allData  = [];
 
 document.getElementById('datePicker').valueAsDate = new Date();
 
-// ── Hash helper using built-in browser crypto ──
 async function sha256(message) {
-  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-// ── LOGIN ──
 async function doLogin() {
   const u   = document.getElementById('username').value.trim();
   const p   = document.getElementById('password').value;
@@ -167,7 +160,6 @@ async function doLogin() {
   const btn = document.getElementById('loginBtn');
 
   if (!u || !p) { err.textContent = "⚠️ Please fill in both fields."; return; }
-
   if (attempts >= MAX_ATTEMPTS) {
     err.textContent = "🔒 Too many failed attempts. Refresh the page to try again.";
     btn.disabled = true; return;
@@ -187,16 +179,13 @@ async function doLogin() {
     attempts++;
     const left = MAX_ATTEMPTS - attempts;
     err.textContent = left > 0
-      ? `❌ Wrong credentials. ${left} attempt${left>1?'s':''} left.`
+      ? `❌ Wrong credentials. ${left} attempt${left > 1 ? 's' : ''} left.`
       : "🔒 Too many failed attempts. Refresh to try again.";
     document.getElementById('password').value = "";
-
-    // Shake the login box
     const panel = document.getElementById('loginPanel');
     panel.classList.remove('shake');
-    void panel.offsetWidth; // reflow to restart animation
+    void panel.offsetWidth;
     panel.classList.add('shake');
-
     btn.disabled = attempts >= MAX_ATTEMPTS;
   }
 
@@ -204,30 +193,27 @@ async function doLogin() {
   if (attempts < MAX_ATTEMPTS) btn.disabled = false;
 }
 
-// ── LOGOUT ──
 function doLogout() {
   allData = [];
   document.getElementById('mainApp').style.display    = "none";
   document.getElementById('loginPanel').style.display = "block";
-  document.getElementById('username').value  = "";
-  document.getElementById('password').value  = "";
-  document.getElementById('tableBody').innerHTML = "";
-  document.getElementById('summaryBoxes').innerHTML = "";
-  document.getElementById('status').textContent = "Select a date and click Load.";
-  document.getElementById('loginError').textContent = "";
+  document.getElementById('username').value           = "";
+  document.getElementById('password').value           = "";
+  document.getElementById('tableBody').innerHTML      = "";
+  document.getElementById('summaryBoxes').innerHTML   = "";
+  document.getElementById('status').textContent       = "Select a date and click Load.";
+  document.getElementById('loginError').textContent   = "";
 }
 
-// Enter key support
 ['username','password'].forEach(id =>
   document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); })
 );
 
-// ── LOAD ATTENDANCE ──
 async function loadAttendance() {
   const date = document.getElementById('datePicker').value;
   if (!date) { alert("Please select a date."); return; }
-  document.getElementById('status').textContent = "⏳ Loading...";
-  document.getElementById('tableBody').innerHTML = "";
+  document.getElementById('status').textContent     = "⏳ Loading...";
+  document.getElementById('tableBody').innerHTML    = "";
   document.getElementById('summaryBoxes').innerHTML = "";
 
   try {
@@ -248,25 +234,23 @@ async function loadAttendance() {
   }
 }
 
-// ── HELPERS ──
-function getStatus(r) { return r.status ?? r.kehadiran ?? r.attendance ?? ""; }
+function isLate(r) { return r.late_count > 0; }
 
 function populateClassFilter(data) {
-  const classes = [...new Set(data.map(r => r.class ?? r.kelas ?? r.tingkatan ?? ""))].filter(Boolean).sort();
+  const classes = [...new Set(data.map(r => r.class ?? ""))].filter(Boolean).sort();
   const sel = document.getElementById('classFilter');
   sel.innerHTML = '<option value="">-- All Classes --</option>';
   classes.forEach(c => { const o = document.createElement('option'); o.value = o.textContent = c; sel.appendChild(o); });
 }
 
 function renderSummary(data) {
-  const hadir  = data.filter(r => /hadir|present/i.test(getStatus(r))).length;
-  const absent = data.filter(r => /absent|tidak/i.test(getStatus(r))).length;
-  const late   = data.filter(r => /late|lewat/i.test(getStatus(r))).length;
+  const total  = data.length;
+  const late   = data.filter(r => isLate(r)).length;
+  const ontime = total - late;
   document.getElementById('summaryBoxes').innerHTML = `
-    <div class="stat-box"><div class="num">${data.length}</div><div class="lbl">Total</div></div>
-    <div class="stat-box"><div class="num" style="color:#155724">${hadir}</div><div class="lbl">Present</div></div>
-    <div class="stat-box"><div class="num" style="color:#721c24">${absent}</div><div class="lbl">Absent</div></div>
-    <div class="stat-box"><div class="num" style="color:#856404">${late}</div><div class="lbl">Late</div></div>`;
+    <div class="stat-box"><div class="num">${total}</div><div class="lbl">Total Hadir</div></div>
+    <div class="stat-box"><div class="num" style="color:#155724">${ontime}</div><div class="lbl">On Time</div></div>
+    <div class="stat-box"><div class="num" style="color:#856404">${late}</div><div class="lbl">Lewat</div></div>`;
 }
 
 function renderTable() {
@@ -275,35 +259,37 @@ function renderTable() {
   const status = document.getElementById('statusFilter').value.toLowerCase();
 
   const filtered = allData.filter(r => {
-    const name = (r.name ?? r.nama ?? "").toLowerCase();
-    const id   = String(r.id ?? r.no_kad ?? r.ic ?? "").toLowerCase();
-    const cls  = (r.class ?? r.kelas ?? r.tingkatan ?? "").toLowerCase();
-    const stat = getStatus(r).toLowerCase();
+    const name = (r.name ?? "").toLowerCase();
+    const id   = String(r.id ?? "").toLowerCase();
+    const cls  = (r.class ?? "").toLowerCase();
+    const stat = isLate(r) ? "late" : "hadir";
     return (!search || name.includes(search) || id.includes(search) || cls.includes(search))
         && (!kelas  || cls === kelas)
-        && (!status || stat.includes(status));
+        && (!status || stat === status);
   });
 
   const body = document.getElementById('tableBody');
   body.innerHTML = "";
 
   if (!filtered.length) {
-    body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">No matching records.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px;">No matching records.</td></tr>`;
     return;
   }
 
   filtered.forEach((r, i) => {
-    const stat    = getStatus(r);
-    const badgeCls = /hadir|present/i.test(stat) ? "hadir"
-                   : /absent|tidak/i.test(stat)  ? "absent" : "late";
+    const late     = isLate(r);
+    const badgeCls = late ? "late" : "hadir";
+    const badgeTxt = late ? "Lewat" : "Hadir";
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${i+1}</td>
-      <td>${r.id ?? r.no_kad ?? r.ic ?? "-"}</td>
-      <td>${r.name ?? r.nama ?? "-"}</td>
-      <td>${r.class ?? r.kelas ?? r.tingkatan ?? "-"}</td>
-      <td><span class="badge ${badgeCls}">${stat || "-"}</span></td>
-      <td>${r.time ?? r.masa ?? r.check_in ?? "-"}</td>`;
+      <td>${i + 1}</td>
+      <td>${r.id ?? "-"}</td>
+      <td>${r.name ?? "-"}</td>
+      <td>${r.class ?? "-"}</td>
+      <td><span class="badge ${badgeCls}">${badgeTxt}</span></td>
+      <td>${r.attendance_time ?? "-"}</td>
+      <td>${r.checkout_time ?? "-"}</td>
+      <td>${r.late_count ?? 0}</td>`;
     body.appendChild(tr);
   });
 
