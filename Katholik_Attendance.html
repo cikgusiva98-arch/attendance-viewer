@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eDatang Attendance Viewer</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f0f4f8; }
+
+  #loginPanel {
+    max-width: 340px; margin: 60px auto; background: white;
+    padding: 28px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  }
+  #loginPanel h3 { text-align: center; color: #2980b9; margin-top: 0; }
+  #loginPanel .school-name {
+    text-align: center; font-size: 13px; color: #888; margin-bottom: 16px;
+  }
+  #loginPanel input {
+    width: 100%; padding: 10px; margin: 8px 0;
+    border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+  }
+  #loginPanel button {
+    width: 100%; padding: 11px; background: #2980b9; color: white;
+    border: none; border-radius: 6px; font-size: 15px; cursor: pointer; margin-top: 8px;
+  }
+  #loginPanel button:hover { background: #1a6a9a; }
+  #loginPanel button:disabled { background: #aaa; cursor: not-allowed; }
+  #loginError { color: #c0392b; font-size: 13px; text-align: center; margin-top: 8px; min-height: 18px; }
+
+  #mainApp { display: none; }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #2980b9; color: white; padding: 10px 14px;
+    border-radius: 8px; margin-bottom: 12px;
+  }
+  .topbar span { font-size: 14px; }
+  .topbar button {
+    background: rgba(255,255,255,0.2); border: 1px solid white;
+    color: white; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 13px;
+  }
+  .topbar button:hover { background: rgba(255,255,255,0.35); }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    background: white; padding: 12px; border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 12px;
+  }
+  .controls input, .controls select, .controls button {
+    padding: 8px 11px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+  }
+  .controls button { background: #27ae60; color: white; border: none; cursor: pointer; }
+  .controls button:hover { background: #1e8449; }
+
+  #status { text-align: center; color: #888; margin-bottom: 8px; font-size: 13px; }
+
+  .summary { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .stat-box {
+    flex: 1; min-width: 80px; background: white; border-radius: 8px;
+    padding: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .stat-box .num { font-size: 22px; font-weight: bold; color: #2980b9; }
+  .stat-box .lbl { font-size: 11px; color: #777; }
+
+  .scroll-wrap { max-height: 460px; overflow-y: auto; border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; }
+  thead { background: #2980b9; color: white; position: sticky; top: 0; z-index: 1; }
+  th, td { padding: 9px 11px; text-align: left; border-bottom: 1px solid #eee; }
+  tbody tr:hover { background: #eaf4ff; }
+
+  .badge { padding: 3px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+  .hadir  { background: #d4edda; color: #155724; }
+  .absent { background: #f8d7da; color: #721c24; }
+  .late   { background: #fff3cd; color: #856404; }
+
+  .lock-icon { font-size: 48px; text-align: center; margin-bottom: 8px; }
+
+  /* Shake animation on wrong password */
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20%,60%  { transform: translateX(-8px); }
+    40%,80%  { transform: translateX(8px); }
+  }
+  .shake { animation: shake 0.4s ease; }
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN PANEL ===== -->
+<div id="loginPanel">
+  <div class="lock-icon">🏫</div>
+  <h3>Attendance Viewer</h3>
+  <div class="school-name">CHS Melaka — Staff Access Only</div>
+  <input type="text"     id="username" placeholder="Username" autocomplete="off" spellcheck="false" />
+  <input type="password" id="password" placeholder="Password" />
+  <button id="loginBtn" onclick="doLogin()">Log In</button>
+  <div id="loginError"></div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="mainApp">
+  <div class="topbar">
+    <span>📋 <strong>eDatang Attendance Viewer</strong></span>
+    <button onclick="doLogout()">🚪 Logout</button>
+  </div>
+
+  <div class="controls">
+    <input type="date" id="datePicker" />
+    <input type="text" id="searchInput" placeholder="Search name / ID / class..." style="flex:1;min-width:160px;" />
+    <select id="classFilter"><option value="">-- All Classes --</option></select>
+    <select id="statusFilter">
+      <option value="">-- All Status --</option>
+      <option value="hadir">Hadir</option>
+      <option value="absent">Absent</option>
+      <option value="late">Late</option>
+    </select>
+    <button onclick="loadAttendance()">🔍 Load</button>
+  </div>
+
+  <div id="status">Select a date and click Load.</div>
+  <div class="summary" id="summaryBoxes"></div>
+
+  <div class="scroll-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>ID</th><th>Name</th><th>Class</th><th>Status</th><th>Time</th></tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════╗
+// ║  CREDENTIALS — edit these two values only               ║
+// ║                                                          ║
+// ║  USERNAME : admin║
+// ║  PASSWORD : 42381130ee52ed949aa505a7dd5bad8795e2880d897f941d349ee4f254111087║
+// ║  Get hash : https://emn178.github.io/online-tools/sha256.html║
+// ╚══════════════════════════════════════════════════════════╝
+
+const VALID_USERNAME      = "admin";
+const VALID_PASSWORD_HASH = "42381130ee52ed949aa505a7dd5bad8795e2880d897f941d349ee4f254111087";
+// Above hash = "sekolah123" — REPLACE with your own hash!
+
+// ── Max login attempts before lockout ──
+const MAX_ATTEMPTS = 5;
+let attempts = 0;
+
+// ───────────────────────────────────────
+const API_URL = ""https://script.google.com/macros/s/AKfycbyrVVMiRyaYmaHZKFUMOYKh7IT7M5ZSuIm-QNm7dHwVRx6mJUXZaHuaQZ28XM1z6_4eyA/exec";
+let allData = [];
+
+document.getElementById('datePicker').valueAsDate = new Date();
+
+// ── Hash helper using built-in browser crypto ──
+async function sha256(message) {
+  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// ── LOGIN ──
+async function doLogin() {
+  const u   = document.getElementById('username').value.trim();
+  const p   = document.getElementById('password').value;
+  const err = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+
+  if (!u || !p) { err.textContent = "⚠️ Please fill in both fields."; return; }
+
+  if (attempts >= MAX_ATTEMPTS) {
+    err.textContent = "🔒 Too many failed attempts. Refresh the page to try again.";
+    btn.disabled = true; return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Checking...";
+
+  const hash = await sha256(p);
+
+  if (u === VALID_USERNAME && hash === VALID_PASSWORD_HASH) {
+    document.getElementById('loginPanel').style.display = "none";
+    document.getElementById('mainApp').style.display    = "block";
+    err.textContent = "";
+    attempts = 0;
+  } else {
+    attempts++;
+    const left = MAX_ATTEMPTS - attempts;
+    err.textContent = left > 0
+      ? `❌ Wrong credentials. ${left} attempt${left>1?'s':''} left.`
+      : "🔒 Too many failed attempts. Refresh to try again.";
+    document.getElementById('password').value = "";
+
+    // Shake the login box
+    const panel = document.getElementById('loginPanel');
+    panel.classList.remove('shake');
+    void panel.offsetWidth; // reflow to restart animation
+    panel.classList.add('shake');
+
+    btn.disabled = attempts >= MAX_ATTEMPTS;
+  }
+
+  btn.textContent = "Log In";
+  if (attempts < MAX_ATTEMPTS) btn.disabled = false;
+}
+
+// ── LOGOUT ──
+function doLogout() {
+  allData = [];
+  document.getElementById('mainApp').style.display    = "none";
+  document.getElementById('loginPanel').style.display = "block";
+  document.getElementById('username').value  = "";
+  document.getElementById('password').value  = "";
+  document.getElementById('tableBody').innerHTML = "";
+  document.getElementById('summaryBoxes').innerHTML = "";
+  document.getElementById('status').textContent = "Select a date and click Load.";
+  document.getElementById('loginError').textContent = "";
+}
+
+// Enter key support
+['username','password'].forEach(id =>
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); })
+);
+
+// ── LOAD ATTENDANCE ──
+async function loadAttendance() {
+  const date = document.getElementById('datePicker').value;
+  if (!date) { alert("Please select a date."); return; }
+  document.getElementById('status').textContent = "⏳ Loading...";
+  document.getElementById('tableBody').innerHTML = "";
+  document.getElementById('summaryBoxes').innerHTML = "";
+
+  try {
+    const res = await fetch(`${API_URL}?date=${date}`);
+    if (!res.ok) throw new Error(`Server responded with HTTP ${res.status}`);
+    const json = await res.json();
+    allData = Array.isArray(json) ? json
+            : json.data ?? json.students ?? json.attendance ?? [];
+
+    if (!allData.length) {
+      document.getElementById('status').textContent = "No records found for " + date; return;
+    }
+    populateClassFilter(allData);
+    renderSummary(allData);
+    renderTable();
+  } catch (e) {
+    document.getElementById('status').textContent = "⚠️ Error: " + e.message;
+  }
+}
+
+// ── HELPERS ──
+function getStatus(r) { return r.status ?? r.kehadiran ?? r.attendance ?? ""; }
+
+function populateClassFilter(data) {
+  const classes = [...new Set(data.map(r => r.class ?? r.kelas ?? r.tingkatan ?? ""))].filter(Boolean).sort();
+  const sel = document.getElementById('classFilter');
+  sel.innerHTML = '<option value="">-- All Classes --</option>';
+  classes.forEach(c => { const o = document.createElement('option'); o.value = o.textContent = c; sel.appendChild(o); });
+}
+
+function renderSummary(data) {
+  const hadir  = data.filter(r => /hadir|present/i.test(getStatus(r))).length;
+  const absent = data.filter(r => /absent|tidak/i.test(getStatus(r))).length;
+  const late   = data.filter(r => /late|lewat/i.test(getStatus(r))).length;
+  document.getElementById('summaryBoxes').innerHTML = `
+    <div class="stat-box"><div class="num">${data.length}</div><div class="lbl">Total</div></div>
+    <div class="stat-box"><div class="num" style="color:#155724">${hadir}</div><div class="lbl">Present</div></div>
+    <div class="stat-box"><div class="num" style="color:#721c24">${absent}</div><div class="lbl">Absent</div></div>
+    <div class="stat-box"><div class="num" style="color:#856404">${late}</div><div class="lbl">Late</div></div>`;
+}
+
+function renderTable() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const kelas  = document.getElementById('classFilter').value.toLowerCase();
+  const status = document.getElementById('statusFilter').value.toLowerCase();
+
+  const filtered = allData.filter(r => {
+    const name = (r.name ?? r.nama ?? "").toLowerCase();
+    const id   = String(r.id ?? r.no_kad ?? r.ic ?? "").toLowerCase();
+    const cls  = (r.class ?? r.kelas ?? r.tingkatan ?? "").toLowerCase();
+    const stat = getStatus(r).toLowerCase();
+    return (!search || name.includes(search) || id.includes(search) || cls.includes(search))
+        && (!kelas  || cls === kelas)
+        && (!status || stat.includes(status));
+  });
+
+  const body = document.getElementById('tableBody');
+  body.innerHTML = "";
+
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">No matching records.</td></tr>`;
+    return;
+  }
+
+  filtered.forEach((r, i) => {
+    const stat    = getStatus(r);
+    const badgeCls = /hadir|present/i.test(stat) ? "hadir"
+                   : /absent|tidak/i.test(stat)  ? "absent" : "late";
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${r.id ?? r.no_kad ?? r.ic ?? "-"}</td>
+      <td>${r.name ?? r.nama ?? "-"}</td>
+      <td>${r.class ?? r.kelas ?? r.tingkatan ?? "-"}</td>
+      <td><span class="badge ${badgeCls}">${stat || "-"}</span></td>
+      <td>${r.time ?? r.masa ?? r.check_in ?? "-"}</td>`;
+    body.appendChild(tr);
+  });
+
+  document.getElementById('status').textContent = `Showing ${filtered.length} of ${allData.length} records`;
+}
+
+['searchInput','classFilter','statusFilter'].forEach(id =>
+  document.getElementById(id).addEventListener('input', renderTable)
+);
+</script>
+</body>
+</html>
